@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SENTINEL-Ω — Probabilistic SOC Agent</title>
+<style>
+  :root {
+    --bg: #0a0e1a; --panel: #111727; --panel-2: #161e33; --border: #1f2942;
+    --text: #e6edf6; --muted: #8a96b3; --accent: #4d8cff;
+    --good: #2fbf71; --warn: #f5a524; --bad: #ef4444; --crit: #b91c1c;
+    --thought: #a78bfa; --info: #3b82f6; --belief: #14b8a6;
+    --serif: "Computer Modern Serif", "Latin Modern Roman", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; font-size: 13px; }
+  header { display:flex; align-items:center; justify-content:space-between;
+           padding: 10px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.2px;
+              font-family: var(--serif); }
+  header h1 .omega { color: var(--accent); font-weight: 700; }
+  header h1 .dot { display:inline-block; width:7px; height:7px; border-radius:50%;
+                    background: var(--good); margin-right:7px; box-shadow: 0 0 6px var(--good);
+                    vertical-align: middle; animation: pulse 2s infinite; }
+  @keyframes pulse { 50% { opacity: 0.5; } }
+  header .meta { font-size: 11px; color: var(--muted); }
+  header .meta code { color: var(--accent); font-family: ui-monospace, monospace; }
+
+  main { display: grid; grid-template-columns: 280px 1fr 380px; height: calc(100vh - 41px); }
+  .col { border-right: 1px solid var(--border); overflow-y: auto; }
+  .col:last-child { border-right: none; }
+  .section-head { padding: 9px 14px; font-size: 10px; text-transform: uppercase;
+                  letter-spacing: 0.1em; color: var(--muted); border-bottom: 1px solid var(--border);
+                  position: sticky; top: 0; background: var(--bg); z-index: 1; font-weight: 500;
+                  display: flex; justify-content: space-between; align-items: center; }
+
+  /* ---------- LEFT: Scenarios ------------------------------------- */
+  .scn { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.15s; }
+  .scn:hover { background: var(--panel-2); }
+  .scn.active { background: var(--panel-2); border-left: 3px solid var(--accent); padding-left: 11px; }
+  .scn .a { font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; margin-bottom: 3px; }
+  .scn .t { font-size: 12px; font-weight: 500; line-height: 1.35; }
+  .scn .arch { display: inline-block; font-size: 9px; padding: 2px 6px; border-radius: 3px;
+               background: var(--panel); color: var(--muted); margin-top: 5px; text-transform: uppercase;
+               letter-spacing: 0.05em; }
+  .scn.benign .arch { background: #064e3b; color: #6ee7b7; }
+  .scn.threat .arch { background: #7f1d1d; color: #fca5a5; }
+
+  /* ---------- CENTER: Live trace ---------------------------------- */
+  #stream { padding: 12px 16px; }
+  .event { margin-bottom: 10px; border-left: 2px solid var(--border); padding: 5px 0 5px 11px; }
+  .event .lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em;
+                color: var(--muted); margin-bottom: 3px; font-weight: 500; }
+  .event .body { font-size: 12.5px; line-height: 1.55; }
+  .event.alert_received { border-left-color: var(--accent); }
+  .event.chg_initialised { border-left-color: var(--info); }
+  .event.belief_initialised, .event.belief_updated { border-left-color: var(--belief); }
+  .event.memory_retrieved { border-left-color: #ec4899; }
+  .event.agent_thought  { border-left-color: var(--thought); }
+  .event.agent_thought .body { color: #d4d4ff; font-style: italic; }
+  .event.tool_call      { border-left-color: var(--warn); }
+  .event.tool_call .body { font-family: ui-monospace, monospace; font-size: 11.5px; }
+  .event.tool_call .tname { color: var(--warn); font-weight: 500; }
+  .event.tool_result    { border-left-color: var(--good); }
+  .event.tool_result pre { margin: 4px 0 0; font-family: ui-monospace, monospace;
+                            font-size: 10.5px; color: var(--muted); white-space: pre-wrap;
+                            background: var(--panel); padding: 5px 7px; border-radius: 3px;
+                            max-height: 140px; overflow-y: auto; }
+  .event.incident_closed { border-left-color: var(--bad); }
+  .event.error          { border-left-color: var(--bad); color: var(--bad); }
+
+  .entropy-bar { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .entropy-bar .v { font-family: ui-monospace, monospace; font-size: 11px; color: var(--belief); }
+  .entropy-bar .bar { flex: 1; height: 5px; background: var(--panel); border-radius: 2px; overflow: hidden; }
+  .entropy-bar .fill { height: 100%; background: linear-gradient(90deg, var(--good), var(--warn), var(--bad));
+                       transition: width 0.4s; }
+
+  .top-hyps { margin-top: 6px; }
+  .hyp-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11px; }
+  .hyp-row .w { font-family: ui-monospace, monospace; color: var(--belief); width: 50px; }
+  .hyp-row .b { flex: 1; height: 4px; background: var(--panel); border-radius: 2px; overflow: hidden; }
+  .hyp-row .b .f { height: 100%; background: var(--belief); transition: width 0.3s; }
+  .hyp-row .l { color: var(--muted); font-size: 10px; width: 100px; }
+
+  /* ---------- RIGHT: Verdict + theory dashboard ------------------ */
+  #verdict { padding: 14px; }
+  .panel-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+                padding: 12px 14px; margin-bottom: 12px; }
+  .panel-card h4 { margin: 0 0 8px; font-size: 10px; text-transform: uppercase;
+                   letter-spacing: 0.1em; color: var(--muted); font-weight: 500; }
+
+  .verdict-row { display: flex; justify-content: space-between; padding: 4px 0;
+                  font-size: 12.5px; border-bottom: 1px dashed var(--border); }
+  .verdict-row:last-child { border-bottom: none; }
+  .verdict-row .k { color: var(--muted); }
+  .verdict-row .v { font-weight: 500; font-family: var(--serif); }
+
+  .sev { font-size: 10px; padding: 2px 6px; border-radius: 3px; text-transform: uppercase;
+         letter-spacing: 0.05em; font-weight: 600; }
+  .sev.info { background: #1e293b; color: #94a3b8; }
+  .sev.low  { background: #064e3b; color: #6ee7b7; }
+  .sev.medium { background: #713f12; color: #fcd34d; }
+  .sev.high { background: #7f1d1d; color: #fca5a5; }
+  .sev.critical { background: var(--crit); color: #fee2e2; }
+
+  .conformal-set { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+  .conformal-set .sev { opacity: 0.5; border: 1px solid transparent; }
+  .conformal-set .sev.in { opacity: 1; border-color: var(--belief); box-shadow: 0 0 6px rgba(20,184,166,0.4); }
+
+  .pareto-mini { font-family: ui-monospace, monospace; font-size: 10px; color: var(--muted);
+                  background: var(--panel-2); padding: 6px 8px; border-radius: 3px; margin-top: 6px; }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 12px; }
+  .typing::after { content: "▍"; animation: blink 1s infinite; color: var(--accent); }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  button.run { background: var(--accent); color: white; border: none; padding: 5px 11px;
+               border-radius: 3px; font-size: 11px; cursor: pointer; font-weight: 500;
+               text-transform: uppercase; letter-spacing: 0.05em; }
+  button.run:hover { background: #6ba1ff; }
+  button.run:disabled { opacity: 0.4; cursor: wait; }
+
+  .gt-correct { color: var(--good); }
+  .gt-wrong { color: var(--bad); }
+
+  /* Mini-equation block */
+  .eq { font-family: var(--serif); font-style: italic; font-size: 11px; color: var(--muted);
+        margin-top: 4px; padding-left: 4px; border-left: 2px solid var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>
+    <span class="dot"></span>
+    SENTINEL-<span class="omega">Ω</span>
+    <span style="font-weight:400;font-style:italic;color:var(--muted);margin-left:8px;font-family:var(--serif);">
+      Probabilistic Causal Agent for Autonomous Security
+    </span>
+  </h1>
+  <div class="meta">
+    Model: <code>claude-opus-4-7</code> · α=0.10 · τ=0.40
+  </div>
+</header>
+
+<main>
+
+  <!-- LEFT: CHIMERA scenarios -->
+  <section class="col">
+    <div class="section-head">CHIMERA Scenarios</div>
+    <div id="scn-list"></div>
+  </section>
+
+  <!-- CENTER: Live agent trace -->
+  <section class="col">
+    <div class="section-head">
+      <span id="stream-title">Live Agent Trace</span>
+      <button class="run" id="run-btn" disabled>▶ Triage</button>
+    </div>
+    <div id="stream">
+      <div class="empty">Select a scenario and press <b>Triage</b> to observe SENTINEL-Ω's belief state evolve under information-gain-driven investigation.</div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Verdict + theoretical guarantees -->
+  <section class="col">
+    <div class="section-head">Probabilistic Verdict</div>
+    <div id="verdict">
+      <div class="empty">No incident closed.</div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const scnListEl = document.getElementById("scn-list");
+const streamEl = document.getElementById("stream");
+const streamTitleEl = document.getElementById("stream-title");
+const verdictEl = document.getElementById("verdict");
+const runBtn = document.getElementById("run-btn");
+
+let scenarios = [];
+let selected = null;
+let ws = null;
+let currentScenario = null;
+let priorEntropy = null;
+
+const sevClass = (s) => s;
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function loadScenarios() {
+  const r = await fetch("/scenarios");
+  scenarios = await r.json();
+  renderScenarios();
+}
+
+function renderScenarios() {
+  scnListEl.innerHTML = "";
+  scenarios.forEach((s, i) => {
+    const isBenign = s.archetype.startsWith("BENIGN");
+    const div = document.createElement("div");
+    div.className = "scn" + (selected === i ? " active" : "") + (isBenign ? " benign" : " threat");
+    div.innerHTML = `
+      <div class="a">${s.id}</div>
+      <div class="t">${s.alerts[0].title}</div>
+      <div class="arch">${s.archetype.toLowerCase().replace(/_/g," ")}</div>
+    `;
+    div.onclick = () => { selected = i; renderScenarios(); runBtn.disabled = false; };
+    scnListEl.appendChild(div);
+  });
+}
+
+function appendEvent(evt) {
+  const div = document.createElement("div");
+  div.className = "event " + evt.type;
+  let labelText = evt.type.replace(/_/g, " ");
+  let bodyHtml = "";
+
+  if (evt.type === "alert_received") {
+    bodyHtml = `Triage initialised for <b>${escapeHtml(evt.alert.id)}</b>: ${escapeHtml(evt.alert.title)}`;
+  } else if (evt.type === "chg_initialised") {
+    bodyHtml = `Causal Hypothesis Graph constructed:
+      <b>${evt.n_nodes}</b> nodes, <b>${evt.n_edges}</b> candidate causal edges.
+      <div class="eq">G = (V, E),  E ⊆ V × V,  p(e) ∈ [0,1]</div>`;
+  } else if (evt.type === "belief_initialised") {
+    priorEntropy = evt.entropy_bits;
+    bodyHtml = `Belief filter initialised with <b>${evt.n_particles}</b> particles.
+      <div class="entropy-bar">
+        <span>H(b₀):</span>
+        <div class="bar"><div class="fill" style="width:${Math.min(100, evt.entropy_bits*20)}%"></div></div>
+        <span class="v">${evt.entropy_bits.toFixed(2)} bits</span>
+      </div>`;
+  } else if (evt.type === "memory_retrieved") {
+    const rows = evt.top_matches.map(m =>
+      `<div style="font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted)">
+         ${m.score.toFixed(2)}  ${escapeHtml(m.incident_id || "—")}  →  ${escapeHtml(m.verdict)}
+       </div>`).join("");
+    bodyHtml = `Retrieved <b>${evt.count}</b> similar past incidents from episodic memory:${rows}`;
+  } else if (evt.type === "agent_thought") {
+    bodyHtml = escapeHtml(evt.text);
+  } else if (evt.type === "tool_call") {
+    bodyHtml = `<span class="tname">${evt.name}</span>(${escapeHtml(JSON.stringify(evt.input))})`;
+  } else if (evt.type === "tool_result") {
+    bodyHtml = `<span style="color:var(--good)">↳</span>
+      <pre>${escapeHtml(JSON.stringify(evt.output, null, 2))}</pre>`;
+  } else if (evt.type === "belief_updated") {
+    const top = (evt.top_5 || []).map(h => {
+      const desc = h.metadata && h.metadata.description ? h.metadata.description : "—";
+      const pct = (h.weight * 100).toFixed(0);
+      return `<div class="hyp-row">
+                <span class="w">${pct}%</span>
+                <div class="b"><div class="f" style="width:${pct}%"></div></div>
+                <span class="l">${escapeHtml(desc.substring(0, 20))}</span>
+              </div>`;
+    }).join("");
+    const reduction = priorEntropy !== null ? (priorEntropy - evt.entropy_bits) : 0;
+    bodyHtml = `Posterior updated. ESS=${evt.ess.toFixed(1)}.
+      <div class="entropy-bar">
+        <span>H(b):</span>
+        <div class="bar"><div class="fill" style="width:${Math.min(100, evt.entropy_bits*20)}%"></div></div>
+        <span class="v">${evt.entropy_bits.toFixed(2)} bits</span>
+        <span style="color:var(--good);font-size:10px;margin-left:4px;">−${reduction.toFixed(2)}</span>
+      </div>
+      <div class="top-hyps">${top}</div>`;
+  } else if (evt.type === "incident_closed") {
+    bodyHtml = `Incident closed. Verdict: <b>${escapeHtml(evt.report.verdict)}</b>`;
+    renderVerdict(evt.report, evt.conformal_target_coverage);
+    runBtn.disabled = false;
+    runBtn.textContent = "▶ Triage";
+  } else if (evt.type === "error") {
+    bodyHtml = escapeHtml(evt.message);
+    runBtn.disabled = false;
+  } else {
+    bodyHtml = escapeHtml(JSON.stringify(evt));
+  }
+
+  div.innerHTML = `<div class="lbl">${labelText}</div><div class="body">${bodyHtml}</div>`;
+  streamEl.appendChild(div);
+  streamEl.scrollTop = streamEl.scrollHeight;
+}
+
+function renderVerdict(r, targetCov) {
+  const sevs = ["info","low","medium","high","critical"];
+  const sevSet = new Set(r.severity_set || [r.severity]);
+  const confSet = sevs.map(s => `<span class="sev ${s} ${sevSet.has(s) ? "in" : ""}">${s}</span>`).join("");
+
+  let gtBlock = "";
+  if (currentScenario && currentScenario.ground_truth) {
+    const gt = currentScenario.ground_truth;
+    const sevCorrect = sevSet.has(gt.true_severity);
+    const threatCorrect = (r.verdict === "confirmed_threat") === gt.is_threat;
+    gtBlock = `
+      <div class="panel-card">
+        <h4>Ground Truth (CHIMERA)</h4>
+        <div class="verdict-row"><span class="k">Archetype</span><span class="v" style="font-family:ui-monospace,monospace;font-size:10px;">${escapeHtml(gt.archetype)}</span></div>
+        <div class="verdict-row"><span class="k">True severity</span><span class="v">${gt.true_severity} <span class="${sevCorrect ? 'gt-correct' : 'gt-wrong'}">${sevCorrect ? '✓ in set' : '✗ missed'}</span></span></div>
+        <div class="verdict-row"><span class="k">Is threat</span><span class="v">${gt.is_threat ? 'Yes' : 'No'} <span class="${threatCorrect ? 'gt-correct' : 'gt-wrong'}">${threatCorrect ? '✓' : '✗'}</span></span></div>
+      </div>`;
+  }
+
+  verdictEl.innerHTML = `
+    <div class="panel-card">
+      <h4>Final Verdict</h4>
+      <div class="verdict-row"><span class="k">Verdict</span><span class="v">${escapeHtml(r.verdict)}</span></div>
+      <div class="verdict-row"><span class="k">MAP severity</span><span class="v"><span class="sev ${r.severity}">${r.severity}</span></span></div>
+      <div class="verdict-row"><span class="k">Confidence</span><span class="v">${r.confidence ? (r.confidence*100).toFixed(0)+'%' : '—'}</span></div>
+      <div class="verdict-row"><span class="k">Escalated</span><span class="v">${r.escalate ? 'Yes' : 'No'}</span></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5;">${escapeHtml(r.summary || "")}</div>
+    </div>
+
+    <div class="panel-card">
+      <h4>Conformal Severity Set (target ≥ ${targetCov ? (targetCov*100).toFixed(0) : '90'}%)</h4>
+      <div class="conformal-set">${confSet}</div>
+      <div class="eq" style="margin-top:8px;">C<sub>α</sub>(x) = {y : 1 − π<sub>y</sub>(x) ≤ q̂<sub>α</sub>}</div>
+      <div style="font-size:10.5px;color:var(--muted);margin-top:6px;">
+        Marginal coverage guarantee: P(y<sub>true</sub> ∈ C<sub>α</sub>) ≥ 1−α (Theorem 2).
+      </div>
+    </div>
+
+    ${(r.actions_taken && r.actions_taken.length) ? `
+    <div class="panel-card">
+      <h4>Containment Actions Executed</h4>
+      <ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text);">
+        ${r.actions_taken.map(a => `<li>${escapeHtml(a)}</li>`).join("")}
+      </ul>
+      <div class="eq" style="margin-top:8px;">c* = argmin E[Risk(c)] s.t. E[Coll(c)] ≤ τ</div>
+    </div>` : ""}
+
+    ${gtBlock}
+  `;
+}
+
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws/triage`);
+  ws.onmessage = (m) => appendEvent(JSON.parse(m.data));
+  ws.onclose = () => setTimeout(connectWS, 1000);
+}
+
+runBtn.onclick = () => {
+  if (selected == null || !ws) return;
+  streamEl.innerHTML = "";
+  verdictEl.innerHTML = `<div class="empty">Investigation in progress<span class="typing"></span></div>`;
+  runBtn.disabled = true;
+  runBtn.textContent = "Running…";
+  currentScenario = scenarios[selected];
+  priorEntropy = null;
+  streamTitleEl.textContent = `Live Agent Trace — ${currentScenario.id}`;
+  ws.send(JSON.stringify(currentScenario));
+};
+
+loadScenarios();
+connectWS();
+</script>
+</body>
+</html>

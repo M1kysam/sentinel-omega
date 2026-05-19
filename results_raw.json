@@ -1,0 +1,58 @@
+[
+  {
+    "system": "rule_based_soar",
+    "F1": 0.609,
+    "Precision": 0.438,
+    "Recall": 1.0,
+    "Severity Acc": 0.292,
+    "Macro-F1": 0.292,
+    "ECE \u2193": 0.688,
+    "Brier \u2193": 1.382,
+    "Unnecessary Contain \u2193": 0.679,
+    "Conformal Cov.": "\u2014",
+    "Mean Turns": 1.0,
+    "n": 1200
+  },
+  {
+    "system": "vanilla_llm",
+    "F1": 0.609,
+    "Precision": 0.438,
+    "Recall": 1.0,
+    "Severity Acc": 0.145,
+    "Macro-F1": 0.216,
+    "ECE \u2193": 0.818,
+    "Brier \u2193": 1.63,
+    "Unnecessary Contain \u2193": 0.12,
+    "Conformal Cov.": "\u2014",
+    "Mean Turns": 1.0,
+    "n": 1200
+  },
+  {
+    "system": "react_agent",
+    "F1": 0.759,
+    "Precision": 0.802,
+    "Recall": 0.72,
+    "Severity Acc": 0.428,
+    "Macro-F1": 0.202,
+    "ECE \u2193": 0.489,
+    "Brier \u2193": 1.002,
+    "Unnecessary Contain \u2193": 0.094,
+    "Conformal Cov.": "\u2014",
+    "Mean Turns": 4.53,
+    "n": 1200
+  },
+  {
+    "system": "sentinel_omega",
+    "F1": 0.988,
+    "Precision": 0.976,
+    "Recall": 1.0,
+    "Severity Acc": 0.775,
+    "Macro-F1": 0.427,
+    "ECE \u2193": 0.195,
+    "Brier \u2193": 0.435,
+    "Unnecessary Contain \u2193": 0.001,
+    "Conformal Cov.": 0.912,
+    "Mean Turns": 5.53,
+    "n": 1200
+  }
+]
